@@ -185,7 +185,6 @@ class CodeGenVisitor(BaseVisitor):
         return c
 
 
-
     def visitVarDecl(self, ast: VarDecl, param):
         if not self.gen:
             param[0].append(Symbol(ast.name.name, ast.varType, None))
@@ -199,9 +198,10 @@ class CodeGenVisitor(BaseVisitor):
 
         else:
             if self.globe:
+                code = ""
                 if ast.varInit:
                     frame = param.frame
-                    code = self.visit(ast.varInit, Access(frame, None, False))[0]
+                    code += self.visit(ast.varInit, Access(frame, None, False))[0]
                     code += self.visit(ast.name, Access(frame, None, True))[0]
                 else:
                     code += self.initARRAY(ast, param)
@@ -232,7 +232,7 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             if ast.body is None:
                 foo = Foo(list(map(lambda x: x.varType, ast.param)), None)
-                self.funcList[ast.name.name](Symbol(ast.name, foo, None))
+                self.funcList[ast.name.name] = Symbol(ast.name, foo, None)
             else:
                 env = [[]] + param
                 for x in ast.param:
@@ -262,7 +262,6 @@ class CodeGenVisitor(BaseVisitor):
             for env in param:
                 for x in env:
                     if x.name == ast.name:
-                        print("A",ast)
                         if not isinstance(ast, IdExtend):
                             ast.__class__ = IdExtend
                             ast.sym = x
@@ -304,7 +303,7 @@ class CodeGenVisitor(BaseVisitor):
 
             return self.currentFunc.ztype.rettype if self.currentFunc.ztype.rettype else self.currentFunc
         else:
-            return self.genCall(ast, param)
+            return self.genCall(ast, param), self.currentFunc.ztype.rettype
             
     def visitCallStmt(self, ast: CallStmt, param):
         if not self.gen:
@@ -355,7 +354,6 @@ class CodeGenVisitor(BaseVisitor):
                     code += self.emit.emitLABEL(nextIf, frame)
                     self.emit.printout(code)
 
-
             
             
     def visitFor(self, ast: For, param):
@@ -375,8 +373,35 @@ class CodeGenVisitor(BaseVisitor):
             self.visit(ast.body, param)
 
         else:
-            pass
+            frame = param.frame
+            frame.enterLoop()
+            cont = frame.getContinueLabel()
+            brk = frame.getBreakLabel()
+            cond = frame.getNewLabel()
             
+            idx = frame.getNewIndex()
+            code = self.visit(ast.name, Access(param.frame, None, False))[0]
+            code += self.emit.emitDUP(frame)
+            code += self.emit.emitWRITEVAR("tmp", NumberType(), idx, frame)
+
+            code += self.emit.emitLABEL(cond, frame)
+            code += self.visit(ast.condExpr, Access(frame, None, False))[0]
+            code += self.emit.emitIFTRUE(brk, frame)
+            self.emit.printout(code)
+
+            self.visit(ast.body, SubBody(frame, None))
+            
+            self.emit.printout(self.emit.emitLABEL(cont, frame))
+            updExpr = Assign(ast.name, BinaryOp("+", ast.name, ast.updExpr))
+            self.visit(updExpr, Access(frame, None, False))
+            code = self.emit.emitGOTO(cond, frame)
+
+            code += self.emit.emitLABEL(brk, frame)
+            frame.exitLoop()
+            code += self.emit.emitREADVAR("tmp", NumberType(), idx, frame)
+            code += self.visit(ast.name, Access(frame, None, True))[0]
+            self.emit.printout(code)
+
     def visitReturn(self, ast: Return, param):
         if not self.gen:
             self.ret = True
@@ -387,7 +412,7 @@ class CodeGenVisitor(BaseVisitor):
             if self.currentFunc.foo.rettype is None:
                 self.currentFunc.foo.rettype = rettype
         else:
-            code = self.visit(ast.expr, param)[0]
+            code = self.visit(ast.expr, Access(param.frame, None, False))[0]
             code += self.emit.emitRETURN(param.frame.returnType, param.frame)
             self.emit.printout(code)
  
@@ -397,14 +422,16 @@ class CodeGenVisitor(BaseVisitor):
             lhs = self.visit(ast.lhs, param)
             self.inferType(lhs, rhs)
         else:
-            right = self.visit(ast.rhs, Access(param.frame, None, False))[0]
-            left, typ = self.visit(ast.lhs, Access(param.frame, None, True))
             if type(ast.lhs) is ArrayCell:
+                left, typ = self.visit(ast.lhs, Access(param.frame, None, True))
+                right = self.visit(ast.rhs, Access(param.frame, None, False))[0]
                 code = left + right
                 code += self.emit.emitASTORE(typ, param.frame)
                 self.emit.printout(code)
             else:
-                self.emit.printout(right + left)
+                code = self.visit(ast.rhs, Access(param.frame, None, False))[0]
+                code += self.visit(ast.lhs, Access(param.frame, None, True))[0]
+                self.emit.printout(code)
 
     def visitBinaryOp(self, ast: BinaryOp, param):
         op = ast.op
@@ -454,10 +481,10 @@ class CodeGenVisitor(BaseVisitor):
                 code += self.emit.emitREOP(op, NumberType(), param.frame)
                 ret = BoolType()
             elif op in ['==']:
-                code += self.emit.emitINVOKEVIRTUAL("java/lang/String.equals", StringType(), param.frame)
+                code += self.emit.emitINVOKEVIRTUAL("java/lang/String.equals", Foo([StringType()],BoolType()), param.frame)
                 ret = BoolType()
             elif op in ['...']:
-                code += self.emit.emitINVOKEVIRTUAL("java/lang/String.concat", StringType(), param.frame)
+                code += self.emit.emitINVOKEVIRTUAL("java/lang/String.concat", Foo([StringType()],StringType()), param.frame)
                 ret = StringType()
             return code, ret
 
@@ -497,6 +524,7 @@ class CodeGenVisitor(BaseVisitor):
             return ArrayType([float(len(ast.value))] + base.size, base.eleType)
         else:
             base = None
+            param.isLeft = False
             for x in ast.value:
                 _,tmp = self.visit(x, param)
                 if base is None and isinstance(tmp, (BoolType, StringType, NumberType, ArrayType)):
@@ -514,16 +542,16 @@ class CodeGenVisitor(BaseVisitor):
                     code += self.emit.emitPUSHICONST(idx, param.frame)
                     code += self.visit(x, param)[0]
                     code += self.emit.emitASTORE(base, param.frame)
-                print("Arr", code)
                 return code, ArrayType([len(ast.value)], base)
             else:
                 code = self.emit.emitPUSHICONST(len(ast.value), param.frame)
-                code += self.emit.emitANEWARRAY(base.eleType, param.frame)
+                code += self.emit.emitANEWARRAY(base, param.frame)
                 for idx, x in enumerate(ast.value):
                     code += self.emit.emitDUP(param.frame)
                     code += self.emit.emitPUSHICONST(idx, param.frame)
                     code += self.visit(x, param)[0]
-                    code += self.emit.emitASTORE(base.eleType, param.frame) # fix please
+                    print("base",base)
+                    code += self.emit.emitASTORE(base, param.frame) # fix please
                 return code, ArrayType([len(ast.value)] + base.size, base.eleType)
     
     def visitArrayCell(self, ast: ArrayCell, param):
@@ -540,7 +568,7 @@ class CodeGenVisitor(BaseVisitor):
             for i in range(len(ast.idx)-1):
                 c1 += self.visit(ast.idx[i], Access(param.frame, None, False))[0]
                 c1 += self.emit.emitF2I(param.frame)
-                c1 += self.emit.emitALOAD(ArrayType(), param.frame)
+                c1 += self.emit.emitALOAD(ArrayType([],None), param.frame)
             c1 += self.visit(ast.idx[-1], Access(param.frame, None, False))[0]
             c1 += self.emit.emitF2I(param.frame)
             if param.isLeft:
@@ -553,7 +581,7 @@ class CodeGenVisitor(BaseVisitor):
                     c1 += self.emit.emitALOAD(base.eleType, param.frame)
                     return c1, base.eleType
                 else:
-                    c1 += self.emit.emitALOAD(ArrayType(), param.frame)
+                    c1 += self.emit.emitALOAD(ArrayType([],None), param.frame)
                     return c1, ArrayType(base.size[len(ast.idx):], base.eleType)
 
     
@@ -631,7 +659,7 @@ class CodeGenVisitor(BaseVisitor):
         sym = ast.name.sym
         code = ""
         if len(sym.ztype.size) == 1:
-            code = self.emit.emitPUSHICONST(len(sym.ztype.size), param.frame)
+            code = self.emit.emitPUSHICONST(int(sym.ztype.size[0]), param.frame)
             code += self.emit.emitNEWARRAY(sym.ztype.eleType, param.frame)
         else:
             for i in sym.ztype.size:
@@ -693,7 +721,17 @@ class CodeGenVisitor(BaseVisitor):
         
         if not isMain:
             for x in consdecl.param:
-                self.visit(x, SubBody(frame, None))
+                idx = frame.getNewIndex()
+                code = self.emit.emitVAR(
+                    idx, 
+                    x.name.name, 
+                    x.name.sym.ztype, 
+                    frame.getStartLabel(), 
+                    frame.getEndLabel(), 
+                    frame
+                )
+                self.emit.printout(code)
+                x.name.sym.value = Index(idx)
 
         # Generate code for statements
         self.visit(body, SubBody(frame, None))
