@@ -152,7 +152,7 @@ class CodeGenVisitor(BaseVisitor):
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
         self.globe = True
         for x in ast.decl:
-            if isinstance(x, VarDecl) and x.varInit:
+            if isinstance(x, VarDecl) and (x.varInit or type(x.name.sym.ztype) is ArrayType):
                 self.visit(x, Access(frame, None, False))
         self.globe = False
         self.emit.printout(self.emit.emitRETURN(VoidType(), frame))
@@ -199,13 +199,16 @@ class CodeGenVisitor(BaseVisitor):
 
         else:
             if self.globe:
-                frame = param.frame
-                print(ast.varInit)
-                code = self.visit(ast.varInit, Access(frame, None, False))[0]
-                code += self.visit(ast.name, Access(frame, None, True))[0]
-                print("vardecl",code)
+                if ast.varInit:
+                    frame = param.frame
+                    code = self.visit(ast.varInit, Access(frame, None, False))[0]
+                    code += self.visit(ast.name, Access(frame, None, True))[0]
+                else:
+                    code += self.initARRAY(ast, param)
+
                 self.emit.printout(code)
             else:
+                print("vardecl",ast.name.name)
                 frame = param.frame
                 idx = frame.getNewIndex()
                 code = self.emit.emitVAR(
@@ -217,6 +220,8 @@ class CodeGenVisitor(BaseVisitor):
                     frame
                 )
                 ast.name.sym.value = Index(idx)
+                if ast.varInit is None and type(ast.name.sym.ztype) is ArrayType:
+                    code += self.initARRAY(ast, param)
                 self.emit.printout(code)
                 if ast.varInit:
                     code = self.visit(ast.varInit, Access(frame, None, isLeft=False))[0]
@@ -392,9 +397,14 @@ class CodeGenVisitor(BaseVisitor):
             lhs = self.visit(ast.lhs, param)
             self.inferType(lhs, rhs)
         else:
-            code = self.visit(ast.rhs, Access(param.frame, None, False))[0]
-            code += self.visit(ast.lhs, Access(param.frame, None, True))[0]
-            self.emit.printout(code)
+            right = self.visit(ast.rhs, Access(param.frame, None, False))[0]
+            left, typ = self.visit(ast.lhs, Access(param.frame, None, True))
+            if type(ast.lhs) is ArrayCell:
+                code = left + right
+                code += self.emit.emitASTORE(typ, param.frame)
+                self.emit.printout(code)
+            else:
+                self.emit.printout(right + left)
 
     def visitBinaryOp(self, ast: BinaryOp, param):
         op = ast.op
@@ -526,7 +536,25 @@ class CodeGenVisitor(BaseVisitor):
             else:
                 return ArrayType(arr.size[len(ast.idx):], arr.eleType)
         else:
-            pass
+            c1, base = self.visit(ast.arr, Access(param.frame, None, False))
+            for i in range(len(ast.idx)-1):
+                c1 += self.visit(ast.idx[i], Access(param.frame, None, False))[0]
+                c1 += self.emit.emitF2I(param.frame)
+                c1 += self.emit.emitALOAD(ArrayType(), param.frame)
+            c1 += self.visit(ast.idx[-1], Access(param.frame, None, False))[0]
+            c1 += self.emit.emitF2I(param.frame)
+            if param.isLeft:
+                if len(ast.idx) == len(base.size):
+                    return c1, base.eleType
+                else:
+                    return c1, ArrayType(base.size[len(ast.idx):], base.eleType)
+            else:
+                if len(ast.idx) == len(base.size):
+                    c1 += self.emit.emitALOAD(base.eleType, param.frame)
+                    return c1, base.eleType
+                else:
+                    c1 += self.emit.emitALOAD(ArrayType(), param.frame)
+                    return c1, ArrayType(base.size[len(ast.idx):], base.eleType)
 
     
     def visitBlock(self, ast: Block, param):
@@ -598,6 +626,24 @@ class CodeGenVisitor(BaseVisitor):
         
     def visitIdExtend(self, ast, param):
         return self.visitId(ast, param)
+    
+    def initARRAY(self, ast, param):
+        sym = ast.name.sym
+        code = ""
+        if len(sym.ztype.size) == 1:
+            code = self.emit.emitPUSHICONST(len(sym.ztype.size), param.frame)
+            code += self.emit.emitNEWARRAY(sym.ztype.eleType, param.frame)
+        else:
+            for i in sym.ztype.size:
+                code += self.emit.emitPUSHICONST(int(i), param.frame)
+            code += self.emit.emitMULTIANEWARRAY(sym.ztype, param.frame)
+
+        if type(sym.value) is Index:
+            code += self.emit.emitWRITEVAR(sym.name, sym.ztype, sym.value.value, param.frame)
+        else:
+            code += self.emit.emitPUTSTATIC(f"{sym.value.value}.{sym.name}", sym.ztype, param.frame)
+        return code
+
     
     def genMETHOD(self, consdecl: FuncDecl, o, frame):
         sym = self.funcList.get(consdecl.name.name)

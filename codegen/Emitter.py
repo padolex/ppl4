@@ -176,6 +176,11 @@ class Emitter():
     *   @param toLabel the ending label  of the scope where the variable is active.
     '''
 
+    def emitMULTIANEWARRAY(self, in_, frame):
+        if type(in_) is ArrayType:
+            dimens = len(in_.size)
+            return self.jvm.emitMULTIANEWARRAY(self.getJVMType(in_), str(dimens)) 
+
     def emitVAR(self, in_, varName, inType, fromLabel, toLabel, frame):
         # in_: Int
         # varName: String
