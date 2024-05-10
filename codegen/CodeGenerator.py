@@ -303,7 +303,7 @@ class CodeGenVisitor(BaseVisitor):
 
             return self.currentFunc.ztype.rettype if self.currentFunc.ztype.rettype else self.currentFunc
         else:
-            return self.genCall(ast, param), self.currentFunc.ztype.rettype
+            return self.genCall(ast, param)
             
     def visitCallStmt(self, ast: CallStmt, param):
         if not self.gen:
@@ -408,9 +408,9 @@ class CodeGenVisitor(BaseVisitor):
             rettype = self.visit(ast.expr, param) if ast.expr else VoidType()
 
             if isinstance(rettype, Symbol):
-                rettype.ztype = self.currentFunc.foo.rettype
-            if self.currentFunc.foo.rettype is None:
-                self.currentFunc.foo.rettype = rettype
+                rettype.ztype = self.currentFunc.ztype.rettype
+            if self.currentFunc.ztype.rettype is None:
+                self.currentFunc.ztype.rettype = rettype
         else:
             code = self.visit(ast.expr, Access(param.frame, None, False))[0]
             code += self.emit.emitRETURN(param.frame.returnType, param.frame)
