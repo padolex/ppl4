@@ -100,6 +100,7 @@ class CodeGenVisitor(BaseVisitor):
         self.funcList = {
             "readNumber" :Symbol("readNumber", Foo(list(), NumberType()), CName(self.libName)),
             "readBool" :Symbol("readBool", Foo(list(),BoolType()), CName(self.libName)),
+            "readString" :Symbol("readString", Foo(list(),StringType()), CName(self.libName)),
             "writeNumber": Symbol("writeNumber", Foo([NumberType()], VoidType()), CName(self.libName)),
             "writeBool": Symbol("writeBool", Foo([BoolType()], VoidType()), CName(self.libName)),
             "writeString": Symbol("writeString", Foo([StringType()], VoidType()), CName(self.libName))
@@ -299,6 +300,9 @@ class CodeGenVisitor(BaseVisitor):
     def visitCallExpr(self, ast: CallExpr, param):
         if not self.gen:
             func = self.funcList.get(ast.name.name)
+            if func is None:
+                print(ast)
+                raise "No function"
             args = [self.visit(arg, param) for arg in ast.args]
             for x,y in zip(args, func.ztype.partype):
                 if isinstance(x, Symbol):
@@ -443,12 +447,16 @@ class CodeGenVisitor(BaseVisitor):
             self.ret = True
             rettype = self.visit(ast.expr, param) if ast.expr else VoidType()
             if isinstance(rettype, Symbol):
-                self.setType(rettype.ztype, self.currentFunc.ztype.rettype)
+                self.setType(rettype, self.currentFunc.ztype.rettype)
             elif self.currentFunc.ztype.rettype is None:
                 self.currentFunc.ztype.rettype = rettype
         else:
-            code = self.visit(ast.expr, Access(param.frame, None, False))[0]
-            code += self.emit.emitRETURN(param.frame.returnType, param.frame)
+            code = ""
+            if ast.expr:
+                code = self.visit(ast.expr, Access(param.frame, None, False))[0]
+                code += self.emit.emitRETURN(param.frame.returnType, param.frame)
+            else:
+                code = self.emit.emitRETURN(param.frame.returnType, param.frame)
             self.emit.printout(code)
  
     def visitAssign(self, ast: Assign, param):
