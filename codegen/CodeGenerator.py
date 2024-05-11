@@ -213,7 +213,7 @@ class CodeGenVisitor(BaseVisitor):
 
                 self.emit.printout(code)
             else:
-                print("vardecl",ast.name.name)
+                # print("vardecl",ast.name.name)
                 frame = param.frame
                 idx = frame.getNewIndex()
                 code = self.emit.emitVAR(
@@ -252,9 +252,6 @@ class CodeGenVisitor(BaseVisitor):
                     self.funcList[ast.name.name] = self.currentFunc
                 self.visit(ast.body, env)
                 if not self.ret: self.currentFunc.ztype.rettype = VoidType()         
-                for x in env:
-                    for y in x:
-                        print("Funcdecl",y)
         else:
             if ast.body is None:
                 return
@@ -474,8 +471,10 @@ class CodeGenVisitor(BaseVisitor):
     def visitBinaryOp(self, ast: BinaryOp, param):
         op = ast.op
         if not self.gen:
+            print("hit")
             l = self.visit(ast.left, param)
             r = self.visit(ast.right, param)
+            print("AAAAA",l,r)
             if op in ['+', '-', '*', '/', '%']:
                 self.inferType(l, NumberType())
                 self.inferType(r, NumberType())
@@ -519,7 +518,8 @@ class CodeGenVisitor(BaseVisitor):
                 code += self.emit.emitREOP(op, NumberType(), param.frame)
                 ret = BoolType()
             elif op in ['==']:
-                code += self.emit.emitINVOKEVIRTUAL("java/lang/String.equals", Foo([StringType()],BoolType()), param.frame)
+                param.frame.pop()
+                code += "\tinvokevirtual java/lang/String.equals(Ljava/lang/Object;)Z\n"
                 ret = BoolType()
             elif op in ['...']:
                 code += self.emit.emitINVOKEVIRTUAL("java/lang/String.concat", Foo([StringType()],StringType()), param.frame)
@@ -529,17 +529,18 @@ class CodeGenVisitor(BaseVisitor):
 
     def visitUnaryOp(self, ast: UnaryOp, param):
         if not self.gen:
+            a = self.visit(ast.operand, param)
             if ast.op == '-':
-                self.inferType(ast.operand, NumberType())
+                self.inferType(a, NumberType())
                 return NumberType()
             elif ast.op == 'not':
-                self.inferType(ast.operand, BoolType())
+                self.inferType(a, BoolType())
                 return BoolType()
         else:
             if ast.op == '-':
                 return self.visit(ast.operand, param)[0] + self.emit.emitNEGOP(NumberType(), param.frame), NumberType()
             elif ast.op == 'not':
-                return self.visit(ast.operand, param)[0] + self.emit.emitNOT(param.frame), BoolType()
+                return self.visit(ast.operand, param)[0] + self.emit.emitNOT(BoolType() ,param.frame), BoolType()
 
     def visitArrayLiteral(self, ast: ArrayLiteral, param):
         if not self.gen:
@@ -554,7 +555,8 @@ class CodeGenVisitor(BaseVisitor):
                 return [self.visit(x, param) for x in ast.value]
             
             for x in ast.value:
-                self.inferType(x, base)
+                y = self.visit(x, param)
+                self.inferType(y, base)
 
         
             if isinstance(base, (BoolType, StringType, NumberType)):
@@ -596,7 +598,8 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             arr = self.visit(ast.arr, param)
             for idx in ast.idx:
-                self.inferType(idx, NumberType())
+                x = self.visit(idx, param)
+                self.inferType(x, NumberType())
             if len(ast.idx) == len(arr.size):
                 return arr.eleType
             else:
