@@ -306,7 +306,7 @@ class CodeGenVisitor(BaseVisitor):
                 if isinstance(x, Symbol):
                     x.ztype = y
 
-            return self.currentFunc.ztype.rettype if self.currentFunc.ztype.rettype else self.currentFunc
+            return func.ztype.rettype if func.ztype.rettype else func
         else:
             return self.genCall(ast, param)
             
