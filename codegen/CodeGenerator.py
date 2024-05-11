@@ -31,10 +31,10 @@ class Symbol:
             str(self.value)
         )
     
-class IdExtend(Id):
-    def __init__(self, name, sym: Symbol):
-        super().__init__(name)
-        self.sym = sym
+# class IdExtend(Id):
+#     def __init__(self, name, sym: Symbol):
+#         super().__init__(name)
+#         self.sym = sym
 
 
 class CodeGenerator:
@@ -193,7 +193,6 @@ class CodeGenVisitor(BaseVisitor):
     def visitVarDecl(self, ast: VarDecl, param):
         if not self.gen:
             param[0].append(Symbol(ast.name.name, ast.varType, None))
-            ast.name.__class__ = IdExtend
             ast.name.sym = param[0][-1]
             print("vardecl",ast,id(ast.name.name), ast.name.sym)
 
@@ -270,8 +269,7 @@ class CodeGenVisitor(BaseVisitor):
             for env in param:
                 for x in env:
                     if x.name == ast.name:
-                        if not isinstance(ast, IdExtend):
-                            ast.__class__ = IdExtend
+                        if not hasattr(ast, 'sym'):
                             ast.sym = x
                         if haveType(x.ztype):
                             return x.ztype
@@ -692,8 +690,6 @@ class CodeGenVisitor(BaseVisitor):
         else:
             return self.emit.emitPUSHCONST(ast.value, BoolType(), param.frame), BoolType()
         
-    def visitIdExtend(self, ast, param):
-        return self.visitId(ast, param)
     
     def initARRAY(self, ast, param):
         sym = ast.name.sym
