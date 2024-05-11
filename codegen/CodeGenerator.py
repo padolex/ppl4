@@ -246,10 +246,7 @@ class CodeGenVisitor(BaseVisitor):
                 self.ret = False
                 method = self.funcList.get(ast.name.name)
                 if method:
-                    if haveType(method.foo.rettype):
-                        return
-                    else:
-                        self.currentFunc = method
+                    self.currentFunc = method
                 else:
                     self.currentFunc = Symbol(ast.name.name, Foo(list(map(lambda x: x.varType, ast.param)), None), CName(self.className))    
                     self.funcList[ast.name.name] = self.currentFunc
@@ -347,9 +344,9 @@ class CodeGenVisitor(BaseVisitor):
             elifLabel = frame.getNewLabel() if haveElif else None
             elseLabel = frame.getNewLabel() if haveElse else None
             if haveElse or haveElif:
-                code += self.emit.emitIFTRUE(elifLabel if elifLabel else elseLabel, frame)
+                code += self.emit.emitIFFALSE(elifLabel if elifLabel else elseLabel, frame)
             else:
-                code += self.emit.emitIFTRUE(exitIf, frame)
+                code += self.emit.emitIFFALSE(exitIf, frame)
 
             self.emit.printout(code)
             self.visit(ast.thenStmt, Access(frame, None, False))
@@ -362,17 +359,18 @@ class CodeGenVisitor(BaseVisitor):
                     nextIf = frame.getNewLabel()
                     
                     code = self.visit(cond, Access(frame, None, False))[0]
-                    code += self.emit.emitIFTRUE(nextIf, frame)
+                    code += self.emit.emitIFFALSE(nextIf, frame)
 
                     self.emit.printout(code)
                     self.visit(stmt, Access(frame, None, False))
 
-                    code += self.emit.emitGOTO(exitIf, frame)
+                    code = self.emit.emitGOTO(exitIf, frame)
                     code += self.emit.emitLABEL(nextIf, frame)
                     self.emit.printout(code)
+                    
                 cond, stmt = ast.elifStmt[-1]   
                 code = self.visit(cond, Access(frame, None, False))[0]
-                code += self.emit.emitIFTRUE(elseLabel if elseLabel else exitIf, frame)
+                code += self.emit.emitIFFALSE(elseLabel if elseLabel else exitIf, frame)
                 self.emit.printout(code)
                 self.visit(stmt, Access(frame, None, False))
                 self.emit.printout(self.emit.emitGOTO(exitIf, frame))
