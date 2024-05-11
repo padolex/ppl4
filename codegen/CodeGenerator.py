@@ -350,7 +350,9 @@ class CodeGenVisitor(BaseVisitor):
 
             self.emit.printout(code)
             self.visit(ast.thenStmt, Access(frame, None, False))
-            self.emit.printout(self.emit.emitGOTO(exitIf, frame))
+
+            if haveElif or haveElse:
+                self.emit.printout(self.emit.emitGOTO(exitIf, frame))
 
             if haveElif:
                 self.emit.printout(self.emit.emitLABEL(elifLabel, frame))
@@ -358,22 +360,25 @@ class CodeGenVisitor(BaseVisitor):
                     cond, stmt = ast.elifStmt[i]
                     nextIf = frame.getNewLabel()
                     
-                    code = self.visit(cond, Access(frame, None, False))[0]
-                    code += self.emit.emitIFFALSE(nextIf, frame)
+                    expr = self.visit(cond, Access(frame, None, False))[0]
+                    expr += self.emit.emitIFFALSE(nextIf, frame)
+                    self.emit.printout(expr)
 
-                    self.emit.printout(code)
                     self.visit(stmt, Access(frame, None, False))
 
-                    code = self.emit.emitGOTO(exitIf, frame)
-                    code += self.emit.emitLABEL(nextIf, frame)
-                    self.emit.printout(code)
+                    exitPart = self.emit.emitGOTO(exitIf, frame)
+                    exitPart += self.emit.emitLABEL(nextIf, frame)
+                    self.emit.printout(exitPart)
                     
                 cond, stmt = ast.elifStmt[-1]   
-                code = self.visit(cond, Access(frame, None, False))[0]
-                code += self.emit.emitIFFALSE(elseLabel if elseLabel else exitIf, frame)
-                self.emit.printout(code)
+                expr = self.visit(cond, Access(frame, None, False))[0]
+                expr += self.emit.emitIFFALSE(elseLabel if elseLabel else exitIf, frame)
+                self.emit.printout(expr)
+
                 self.visit(stmt, Access(frame, None, False))
-                self.emit.printout(self.emit.emitGOTO(exitIf, frame))
+                
+                if haveElse:
+                    self.emit.printout(self.emit.emitGOTO(exitIf, frame))
             
             if haveElse:
                 self.emit.printout(self.emit.emitLABEL(elseLabel, frame))
@@ -387,15 +392,15 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             counter = self.visit(ast.name, param)
             if isinstance(counter, Symbol):
-                counter.ztype = NumberType()
+                self.setType(counter, NumberType())
 
             cond = self.visit(ast.condExpr, param)
             if isinstance(cond, Symbol):
-                cond.ztype = BoolType()
+                self.setType(cond, BoolType())
 
             upd = self.visit(ast.updExpr, param)
             if isinstance(upd, Symbol):
-                upd.ztype = NumberType()
+                self.setType(upd, NumberType())
 
             self.visit(ast.body, param)
 
@@ -405,6 +410,9 @@ class CodeGenVisitor(BaseVisitor):
             cont = frame.getContinueLabel()
             brk = frame.getBreakLabel()
             cond = frame.getNewLabel()
+            print("brk", brk)
+            print("cont", cont)
+            print("cond", cond)
             
             idx = frame.getNewIndex()
             code = self.visit(ast.name, Access(param.frame, None, False))[0]
@@ -419,15 +427,15 @@ class CodeGenVisitor(BaseVisitor):
             self.visit(ast.body, SubBody(frame, None))
             
             self.emit.printout(self.emit.emitLABEL(cont, frame))
-            updExpr = Assign(ast.name, BinaryOp("+", ast.name, ast.updExpr))
-            self.visit(updExpr, Access(frame, None, False))
-            code = self.emit.emitGOTO(cond, frame)
+            updStmt = Assign(ast.name, BinaryOp("+", ast.name, ast.updExpr))
+            self.visit(updStmt, Access(frame, None, False))
 
+            code = self.emit.emitGOTO(cond, frame)
             code += self.emit.emitLABEL(brk, frame)
-            frame.exitLoop()
             code += self.emit.emitREADVAR("tmp", NumberType(), idx, frame)
             code += self.visit(ast.name, Access(frame, None, True))[0]
             self.emit.printout(code)
+            frame.exitLoop()
 
     def visitReturn(self, ast: Return, param):
         if not self.gen:

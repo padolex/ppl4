@@ -474,7 +474,16 @@ class Emitter():
         frame.pop()
         frame.pop()
         result.append(self.jvm.emitFCMPL())
-        if op == ">":
+        if op == "=":
+            result.append(self.jvm.emitIFEQ(labelF))   
+            result.append(self.emitPUSHCONST(False, BoolType(), frame))
+            frame.pop()
+            result.append(self.emitGOTO(labelO, frame))
+            result.append(self.emitLABEL(labelF, frame))
+            result.append(self.emitPUSHCONST(True, BoolType(), frame))
+            result.append(self.emitLABEL(labelO, frame)) 
+            return ''.join(result)
+        elif op == ">":
             result.append(self.jvm.emitIFLE(labelF))
         elif op == ">=":
             result.append(self.jvm.emitIFLT(labelF))
