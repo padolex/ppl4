@@ -548,10 +548,10 @@ class Emitter():
         buffer.append(self.jvm.emitENDMETHOD())
         return ''.join(buffer)
 
-    def getConst(self, ast):
-        # ast: Literal
-        if type(ast) is IntLiteral:
-            return (str(ast.value), IntType())
+    # def getConst(self, ast):
+    #     # ast: Literal
+    #     if type(ast) is IntLiteral:
+    #         return (str(ast.value), IntType())
 
     '''   generate code to initialize a local array variable.<p>
     *   @param index the index of the local variable.

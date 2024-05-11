@@ -105,17 +105,22 @@ class CodeGenVisitor(BaseVisitor):
             "writeString": Symbol("writeString", Foo([StringType()], VoidType()), CName(self.libName))
         }
 
+    def setType(self, operand: Symbol, typ):
+        if type(operand.ztype) is Foo:
+            operand.ztype.rettype = typ
+        else:
+            operand.ztype = typ
 
     def setArray(self, base, rhs):
         if len(base.size) == 1:
             for x in rhs:
-                x.ztype = base.eleType
+                self.setType(x, base.eleType)
         else:
             for x in rhs:
                 if type(x) is list:
                     self.setArray(ArrayType(base.size[1:], base.eleType), x)
                 else:
-                    x.ztype = ArrayType(base.size[1:], base.eleType)
+                    self.setType(x, ArrayType(base.size[1:], base.eleType))
 
 
     def inferType(self, l, r):
@@ -124,9 +129,9 @@ class CodeGenVisitor(BaseVisitor):
         if type(r) is list:
             self.setArray(l, r)
         elif isinstance(l, Symbol):
-            l.ztype = r
+            self.setType(l, r)
         elif isinstance(r, Symbol):
-            r.ztype = l
+            self.setType(r, l)
 
     def visitProgram(self, ast, c):
         self.emit.printout(self.emit.emitPROLOG(self.className,"java.lang.Object"))
@@ -337,22 +342,46 @@ class CodeGenVisitor(BaseVisitor):
             haveElse = True if ast.elseStmt else False
             haveElif = True if len(ast.elifStmt) != 0 else False
             code = self.visit(ast.expr, Access(frame, None, False))[0]
+            
+            exitIf = frame.getNewLabel()
+            elifLabel = frame.getNewLabel() if haveElif else None
+            elseLabel = frame.getNewLabel() if haveElse else None
             if haveElse or haveElif:
-                endIf = frame.getNewLabel()
-                code += self.emit.emitIFFALSE(endIf, frame)
-            code += self.visit(ast.thenStmt, Access(frame, None, False))[0]
+                code += self.emit.emitIFTRUE(elifLabel if elifLabel else elseLabel, frame)
+            else:
+                code += self.emit.emitIFTRUE(exitIf, frame)
+
             self.emit.printout(code)
+            self.visit(ast.thenStmt, Access(frame, None, False))
+            self.emit.printout(self.emit.emitGOTO(exitIf, frame))
 
             if haveElif:
-                self.emit.printout(self.emit.emitGOTO(endIf, frame))
-                for x,y in ast.elifStmt:
-                    code = self.visit(x, Access(frame, None, False))[0]
+                self.emit.printout(self.emit.emitLABEL(elifLabel, frame))
+                for i in range(len(ast.elifStmt)-1):
+                    cond, stmt = ast.elifStmt[i]
                     nextIf = frame.getNewLabel()
-                    code += self.emit.emitIFFALSE(nextIf, frame)
-                    code += self.visit(y, Access(frame, None, False))[0]
-                    code += self.emit.emitGOTO(endIf, frame)
+                    
+                    code = self.visit(cond, Access(frame, None, False))[0]
+                    code += self.emit.emitIFTRUE(nextIf, frame)
+
+                    self.emit.printout(code)
+                    self.visit(stmt, Access(frame, None, False))
+
+                    code += self.emit.emitGOTO(exitIf, frame)
                     code += self.emit.emitLABEL(nextIf, frame)
                     self.emit.printout(code)
+                cond, stmt = ast.elifStmt[-1]   
+                code = self.visit(cond, Access(frame, None, False))[0]
+                code += self.emit.emitIFTRUE(elseLabel if elseLabel else exitIf, frame)
+                self.emit.printout(code)
+                self.visit(stmt, Access(frame, None, False))
+                self.emit.printout(self.emit.emitGOTO(exitIf, frame))
+            
+            if haveElse:
+                self.emit.printout(self.emit.emitLABEL(elseLabel, frame))
+                self.visit(ast.elseStmt, Access(frame, None, False))
+
+            self.emit.printout(self.emit.emitLABEL(exitIf, frame))
 
             
             
