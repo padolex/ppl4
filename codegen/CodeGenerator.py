@@ -195,6 +195,7 @@ class CodeGenVisitor(BaseVisitor):
             param[0].append(Symbol(ast.name.name, ast.varType, None))
             ast.name.__class__ = IdExtend
             ast.name.sym = param[0][-1]
+            print("vardecl",ast,id(ast.name.name), ast.name.sym)
 
             if ast.varInit:
                 rhs = self.visit(ast.varInit, param)
@@ -237,7 +238,7 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             if ast.body is None:
                 foo = Foo(list(map(lambda x: x.varType, ast.param)), None)
-                self.funcList[ast.name.name] = Symbol(ast.name, foo, None)
+                self.funcList[ast.name.name] = Symbol(ast.name.name, foo, CName(self.className))
             else:
                 env = [[]] + param
                 for x in ast.param:
@@ -252,7 +253,12 @@ class CodeGenVisitor(BaseVisitor):
                     self.funcList[ast.name.name] = self.currentFunc
                 self.visit(ast.body, env)
                 if not self.ret: self.currentFunc.ztype.rettype = VoidType()         
+                for x in env:
+                    for y in x:
+                        print("Funcdecl",y)
         else:
+            if ast.body is None:
+                return
             func = self.funcList.get(ast.name.name)
             if func is None:
                 raise "No function"
@@ -323,13 +329,13 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             cond = self.visit(ast.expr, param)
             if isinstance(cond, Symbol):
-                cond.ztype = BoolType()
+                self.setType(cond, BoolType())
             self.visit(ast.thenStmt, param)
 
             for x,y in ast.elifStmt:
                 cond = self.visit(x, param)
                 if isinstance(cond, Symbol):
-                    cond.ztype = BoolType()
+                    self.setType(cond, BoolType())
                 self.visit(y, param)
     
             if ast.elseStmt:
@@ -441,10 +447,9 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             self.ret = True
             rettype = self.visit(ast.expr, param) if ast.expr else VoidType()
-
             if isinstance(rettype, Symbol):
-                rettype.ztype = self.currentFunc.ztype.rettype
-            if self.currentFunc.ztype.rettype is None:
+                self.setType(rettype.ztype, self.currentFunc.ztype.rettype)
+            elif self.currentFunc.ztype.rettype is None:
                 self.currentFunc.ztype.rettype = rettype
         else:
             code = self.visit(ast.expr, Access(param.frame, None, False))[0]
@@ -753,10 +758,11 @@ class CodeGenVisitor(BaseVisitor):
 
         body = consdecl.body
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        
+        print(consdecl)
         if not isMain:
             for x in consdecl.param:
                 idx = frame.getNewIndex()
+                print("param",id(x.name.name))
                 code = self.emit.emitVAR(
                     idx, 
                     x.name.name, 
