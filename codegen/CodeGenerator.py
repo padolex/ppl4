@@ -421,7 +421,6 @@ class CodeGenVisitor(BaseVisitor):
             
             idx = frame.getNewIndex()
             code = self.visit(ast.name, Access(param.frame, None, False))[0]
-            code += self.emit.emitDUP(frame)
             code += self.emit.emitWRITEVAR("tmp", NumberType(), idx, frame)
 
             code += self.emit.emitLABEL(cond, frame)
