@@ -1,13 +1,11 @@
 from Utils import *
-
+from CodeGenError import *
 
 class Frame():
-    def __init__(self, name, returnType):
+    def __init__(self, name, returnType, sym = None):
         # name: String
-        # returnType: Type
 
         self.name = name
-        self.returnType = returnType
         self.currentLabel = 0
         self.currOpStackSize = 0
         self.maxOpStackSize = 0
@@ -18,6 +16,8 @@ class Frame():
         self.indexLocal = list()
         self.conLabel = list()
         self.brkLabel = list()
+        self.returnType = returnType
+        self.sym = sym
 
     def getCurrIndex(self):
         return self.currIndex
