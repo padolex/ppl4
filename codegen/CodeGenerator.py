@@ -147,7 +147,6 @@ class CodeGenVisitor(BaseVisitor):
         self.gen = True
         for x in ast.decl:
             if isinstance(x, VarDecl):
-                print(x.name.sym)
                 self.emit.printout(self.emit.emitATTRIBUTE(x.name.name, x.name.sym.ztype, False, self.className))
                 x.name.sym.value = CName(self.className)
 
@@ -195,7 +194,6 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             param[0].append(Symbol(ast.name.name, ast.varType, None))
             ast.name.sym = param[0][-1]
-            print("vardecl",ast,id(ast.name.name), ast.name.sym)
 
             if ast.varInit:
                 rhs = self.visit(ast.varInit, param)
@@ -214,7 +212,6 @@ class CodeGenVisitor(BaseVisitor):
 
                 self.emit.printout(code)
             else:
-                # print("vardecl",ast.name.name)
                 frame = param.frame
                 idx = frame.getNewIndex()
                 code = self.emit.emitVAR(
@@ -301,12 +298,11 @@ class CodeGenVisitor(BaseVisitor):
         if not self.gen:
             func = self.funcList.get(ast.name.name)
             if func is None:
-                print(ast)
                 raise "No function"
             args = [self.visit(arg, param) for arg in ast.args]
             for x,y in zip(args, func.ztype.partype):
                 if isinstance(x, Symbol):
-                    x.ztype = y
+                    self.setType(x, y)
 
             return func.ztype.rettype if func.ztype.rettype else func
         else:
@@ -318,7 +314,7 @@ class CodeGenVisitor(BaseVisitor):
             args = [self.visit(arg, param) for arg in ast.args]
             for x,y in zip(args, func.ztype.partype):
                 if isinstance(x, Symbol):
-                    x.ztype = y
+                    self.setType(x, y)
             return VoidType()
         else:
             self.emit.printout(self.genCall(ast, param)[0])
@@ -415,9 +411,6 @@ class CodeGenVisitor(BaseVisitor):
             cont = frame.getContinueLabel()
             brk = frame.getBreakLabel()
             cond = frame.getNewLabel()
-            print("brk", brk)
-            print("cont", cont)
-            print("cond", cond)
             
             idx = frame.getNewIndex()
             code = self.visit(ast.name, Access(param.frame, None, False))[0]
@@ -478,10 +471,8 @@ class CodeGenVisitor(BaseVisitor):
     def visitBinaryOp(self, ast: BinaryOp, param):
         op = ast.op
         if not self.gen:
-            print("hit")
             l = self.visit(ast.left, param)
             r = self.visit(ast.right, param)
-            print("AAAAA",l,r)
             if op in ['+', '-', '*', '/', '%']:
                 self.inferType(l, NumberType())
                 self.inferType(r, NumberType())
@@ -597,11 +588,10 @@ class CodeGenVisitor(BaseVisitor):
                     code += self.emit.emitDUP(param.frame)
                     code += self.emit.emitPUSHICONST(idx, param.frame)
                     code += self.visit(x, param)[0]
-                    print("base",base)
-                    code += self.emit.emitASTORE(base, param.frame) # fix please
+                    code += self.emit.emitASTORE(base, param.frame)
                 return code, ArrayType([len(ast.value)] + base.size, base.eleType)
     
-    def visitArrayCell(self, ast: ArrayCell, param):
+    def visitArrayCell(self, ast: ArrayCell, param):    
         if not self.gen:
             arr = self.visit(ast.arr, param)
             for idx in ast.idx:
@@ -727,7 +717,6 @@ class CodeGenVisitor(BaseVisitor):
         isMain = consdecl.name.name == "main" and len(
                 consdecl.param) == 0 and type(sym.ztype.rettype) is VoidType
 
-        print("genMETHOD", consdecl.name.name, returnType)
         if not isMain:
             self.emit.printout(
                 self.emit.emitMETHOD(
@@ -764,11 +753,9 @@ class CodeGenVisitor(BaseVisitor):
 
         body = consdecl.body
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        print(consdecl)
         if not isMain:
             for x in consdecl.param:
                 idx = frame.getNewIndex()
-                print("param",id(x.name.name))
                 code = self.emit.emitVAR(
                     idx, 
                     x.name.name, 
